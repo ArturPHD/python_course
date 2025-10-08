@@ -55,8 +55,21 @@ class Job:
     def _shuffle_phase(self, mapped_data):
         shuffled = defaultdict(list)
         for item in mapped_data:
-            key_tuple = tuple(item['key'])
-            shuffled[key_tuple].append(item['value'])
+            key = item['key']
+            
+            # --- NEW, ROBUST FIX ---
+            # The key must be hashable to be used in a dictionary.
+            # We explicitly check for strings first to avoid them being treated as iterables.
+            # Lists are converted to tuples to be made hashable.
+            # Tuples and other hashable types are used as is.
+            if isinstance(key, str):
+                hashable_key = key
+            elif isinstance(key, list):
+                hashable_key = tuple(key)
+            else: # Handles tuples, ints, etc. that are already hashable
+                hashable_key = key
+            
+            shuffled[hashable_key].append(item['value'])
         return dict(shuffled)
 
     def _reduce_phase(self, shuffled_data):
@@ -66,11 +79,25 @@ class Job:
                 continue
             # Use functools.reduce to apply the pairwise reducer iteratively
             final_value = functools.reduce(self.reducer, values)
-            reduced_data.append({'key': key, 'value': final_value})
+            
+            # This is your robust solution to reconstruct the keys correctly.
+            # It handles tuples of characters (from wrongly processed strings)
+            # while leaving other key types (like strings or tuples with mixed types) alone.
+            if isinstance(key, tuple) and all(isinstance(ch, str) for ch in key):
+                output_key = ''.join(key)
+            # The original key from shuffle phase might be a tuple ('I', 15) or a string 'hello'.
+            # We want to keep it as is, but convert tuples to lists for consistent JSON output if needed.
+            elif isinstance(key, tuple):
+                 output_key = list(key)
+            else:
+                 output_key = key
+
+            reduced_data.append({'key': output_key, 'value': final_value})
         return reduced_data
 
     def _save_intermediate_data(self, data, filename):
         path = os.path.join(self.intermediate_dir, filename)
+        # Convert tuple keys to strings for JSON serialization
         data_to_save = {str(k): v for k, v in data.items()} if isinstance(data, dict) else data
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(data_to_save, f, indent=2)
@@ -79,3 +106,4 @@ class Job:
         path = os.path.join(self.output_dir, 'results.json')
         with open(path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2)
+
