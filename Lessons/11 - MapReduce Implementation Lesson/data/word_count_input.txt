@@ -1,0 +1,4 @@
+Hello world, goodbye world!
+Hello MapReduce, goodbye Python.
+MapReduce is a programming model.
+Python is a great language.
